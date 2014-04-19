@@ -16,6 +16,7 @@
 # To install in $HOME instead of /usr/local, use:
 #    make install prefix=$HOME
 
+TGT_ARCH=
 CC=cc
 
 CFLAGS=-O
@@ -387,24 +388,32 @@ distclean: clean zconf zconf.h.cmakein docs
 	@if [ ! -f zlib.3 ]; then rm -f zlib.3.pdf ; fi
 
 tags:
-	etags $(SRCDIR)*.[ch]
+	etags *.[ch]
 
-adler32.o zutil.o: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h
-gzclose.o gzlib.o gzread.o gzwrite.o: $(SRCDIR)zlib.h zconf.h $(SRCDIR)gzguts.h
-compress.o example.o minigzip.o uncompr.o: $(SRCDIR)zlib.h zconf.h
-crc32.o: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)crc32.h
-deflate.o: $(SRCDIR)deflate.h $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h
-infback.o inflate.o: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h $(SRCDIR)inflate.h $(SRCDIR)inffast.h $(SRCDIR)inffixed.h
-inffast.o: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h $(SRCDIR)inflate.h $(SRCDIR)inffast.h
-inftrees.o: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h
-trees.o: $(SRCDIR)deflate.h $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)trees.h
+depend:
+	makedepend -- $(CFLAGS) -- *.[ch]
 
-adler32.lo zutil.lo: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h
-gzclose.lo gzlib.lo gzread.lo gzwrite.lo: $(SRCDIR)zlib.h zconf.h $(SRCDIR)gzguts.h
-compress.lo example.lo minigzip.lo uncompr.lo: $(SRCDIR)zlib.h zconf.h
-crc32.lo: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)crc32.h
-deflate.lo: $(SRCDIR)deflate.h $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h
-infback.lo inflate.lo: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h $(SRCDIR)inflate.h $(SRCDIR)inffast.h $(SRCDIR)inffixed.h
-inffast.lo: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h $(SRCDIR)inflate.h $(SRCDIR)inffast.h
-inftrees.lo: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h
-trees.lo: $(SRCDIR)deflate.h $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)trees.h
+# DO NOT DELETE THIS LINE -- make depend depends on it.
+
+ifeq ($(TGT_ARCH), x86_64)
+deflate.o: contrib/amd64/longest-match.inc
+endif
+adler32.o zutil.o: zutil.h zlib.h zconf.h
+gzclose.o gzlib.o gzread.o gzwrite.o: zlib.h zconf.h gzguts.h
+compress.o example.o minigzip.o uncompr.o: zlib.h zconf.h
+crc32.o: zutil.h zlib.h zconf.h crc32.h
+deflate.o: deflate.h zutil.h zlib.h zconf.h
+infback.o inflate.o: zutil.h zlib.h zconf.h inftrees.h inflate.h inffast.h inffixed.h
+inffast.o: zutil.h zlib.h zconf.h inftrees.h inflate.h inffast.h
+inftrees.o: zutil.h zlib.h zconf.h inftrees.h
+trees.o: deflate.h zutil.h zlib.h zconf.h trees.h
+
+adler32.lo zutil.lo: zutil.h zlib.h zconf.h
+gzclose.lo gzlib.lo gzread.lo gzwrite.lo: zlib.h zconf.h gzguts.h
+compress.lo example.lo minigzip.lo uncompr.lo: zlib.h zconf.h
+crc32.lo: zutil.h zlib.h zconf.h crc32.h
+deflate.lo: deflate.h zutil.h zlib.h zconf.h
+infback.lo inflate.lo: zutil.h zlib.h zconf.h inftrees.h inflate.h inffast.h inffixed.h
+inffast.lo: zutil.h zlib.h zconf.h inftrees.h inflate.h inffast.h
+inftrees.lo: zutil.h zlib.h zconf.h inftrees.h
+trees.lo: deflate.h zutil.h zlib.h zconf.h trees.h
