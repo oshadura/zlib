@@ -154,15 +154,30 @@ local const config configuration_table[10] = {
 /* rank Z_BLOCK between Z_NO_FLUSH and Z_PARTIAL_FLUSH */
 #define RANK(f) (((f) * 2) - ((f) > 4 ? 9 : 0))
 
+#ifdef HAS_SSE42
+#include "contrib/amd64/hash.inc"
+#endif
+
 /* ===========================================================================
  * Update a hash value with the given input byte
  * IN  assertion: all calls to UPDATE_HASH are made with consecutive input
  *    characters, so that a running hash key can be computed from the previous
  *    key instead of complete recalculation each time.
  */
-#define UPDATE_HASH(s,h,c) (h = (((h)<<s->hash_shift) ^ (c)) & s->hash_mask)
+#ifndef UPDATE_HASH
+    __attribute__ ((always_inline)) local uInt
+    _update_hash(deflate_state *s, uInt h, const unsigned char *str)  {
+        return (((h << s->hash_shift) ^ *(str)) & (s->hash_mask));
+    }
+    #define UPDATE_HASH(s,h,str) (h = _update_hash(s, h, str), h)
+#endif
 
-
+#ifndef INIT_HASH
+    #if MIN_MATCH != 3
+        #error Need to Call UPDATE_HASH() MIN_MATCH-3 more times in INIT_HAHS
+    #endif
+    #define INIT_HASH(s, h, str) (h = *str, UPDATE_HASH(s, h, (str)+1))
+#endif
 /* ===========================================================================
  * Insert string str in the dictionary and set match_head to the previous head
  * of the hash chain (the most recent string with same hash key). Return
@@ -175,12 +190,12 @@ local const config configuration_table[10] = {
  */
 #ifdef FASTEST
 #define INSERT_STRING(s, str, match_head) \
-   (UPDATE_HASH(s, s->ins_h, s->window[(str) + (MIN_MATCH-1)]), \
+   (UPDATE_HASH(s, s->ins_h, &s->window[(str) + (MIN_MATCH-1)]), \
     match_head = s->head[s->ins_h], \
     s->head[s->ins_h] = (Pos)(str))
 #else
 #define INSERT_STRING(s, str, match_head) \
-   (UPDATE_HASH(s, s->ins_h, s->window[(str) + (MIN_MATCH-1)]), \
+   (UPDATE_HASH(s, s->ins_h, &s->window[(str) + (MIN_MATCH-1)]), \
     match_head = s->prev[(str) & s->w_mask] = s->head[s->ins_h], \
     s->head[s->ins_h] = (Pos)(str))
 #endif
@@ -428,14 +443,16 @@ int ZEXPORT deflateSetDictionary (strm, dictionary, dictLength)
     while (s->lookahead >= MIN_MATCH) {
         str = s->strstart;
         n = s->lookahead - (MIN_MATCH-1);
+        uInt ins_h = s->ins_h;
         do {
-            UPDATE_HASH(s, s->ins_h, s->window[str + MIN_MATCH-1]);
+            UPDATE_HASH(s, ins_h, &s->window[str + MIN_MATCH-1]);
 #ifndef FASTEST
-            s->prev[str & s->w_mask] = s->head[s->ins_h];
+            s->prev[str & s->w_mask] = s->head[ins_h];
 #endif
-            s->head[s->ins_h] = (Pos)str;
+            s->head[ins_h] = (Pos)str;
             str++;
         } while (--n);
+        s->ins_h = ins_h;
         s->strstart = str;
         s->lookahead = MIN_MATCH-1;
         fill_window(s);
@@ -1619,22 +1636,20 @@ local void fill_window(s)
         /* Initialize the hash value now that we have some input: */
         if (s->lookahead + s->insert >= MIN_MATCH) {
             uInt str = s->strstart - s->insert;
-            s->ins_h = s->window[str];
-            UPDATE_HASH(s, s->ins_h, s->window[str + 1]);
-#if MIN_MATCH != 3
-            Call UPDATE_HASH() MIN_MATCH-3 more times
-#endif
+            uInt ins_h = s->window[str];
+            INIT_HASH(s, ins_h, &s->window[str]);
             while (s->insert) {
-                UPDATE_HASH(s, s->ins_h, s->window[str + MIN_MATCH-1]);
+                UPDATE_HASH(s, ins_h, &s->window[str + MIN_MATCH-1]);
 #ifndef FASTEST
-                s->prev[str & s->w_mask] = s->head[s->ins_h];
+                s->prev[str & s->w_mask] = s->head[ins_h];
 #endif
-                s->head[s->ins_h] = (Pos)str;
+                s->head[ins_h] = (Pos)str;
                 str++;
                 s->insert--;
                 if (s->lookahead + s->insert < MIN_MATCH)
                     break;
             }
+            s->ins_h = ins_h;
         }
         /* If the whole input has less than MIN_MATCH bytes, ins_h is garbage,
          * but this is not important since only literal bytes will be emitted.
@@ -1971,11 +1986,7 @@ local block_state deflate_fast(s, flush)
             {
                 s->strstart += s->match_length;
                 s->match_length = 0;
-                s->ins_h = s->window[s->strstart];
-                UPDATE_HASH(s, s->ins_h, s->window[s->strstart+1]);
-#if MIN_MATCH != 3
-                Call UPDATE_HASH() MIN_MATCH-3 more times
-#endif
+                INIT_HASH(s, s->ins_h, &s->window[s->strstart]);
                 /* If lookahead < MIN_MATCH, ins_h is garbage, but it does not
                  * matter since it will be recomputed at next deflate call.
                  */
