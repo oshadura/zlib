@@ -246,9 +246,9 @@ local unsigned long crc32_generic(crc, buf, len)
 extern uint crc32_pclmul_le_16(unsigned char const *buffer,
                                size_t len, uInt crc32);
 
-unsigned long crc32(crc, buf, len)
-    unsigned long crc;
-    const unsigned char FAR *buf;
+uLong crc32(crc, buf, len)
+    uLong crc;
+    const Bytef *buf;
     uInt len;
 {
     if (len < PCLMUL_MIN_LEN + PCLMUL_ALIGN  - 1)
@@ -281,9 +281,9 @@ unsigned long crc32(crc, buf, len)
 #undef PCLMUL_ALIGN_MASK
 
 #else
-unsigned long crc32(crc, buf, len)
-    unsigned long crc;
-    const unsigned char FAR *buf;
+uLong crc32(crc, buf, len)
+    uLong crc;
+    const Bytef *buf;
     uInt len;
 {
     return crc32_generic(crc, buf, len);
