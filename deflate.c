@@ -49,8 +49,14 @@
 
 /* @(#) $Id$ */
 
+#include <stdio.h>
+
 #include "deflate.h"
 #include <immintrin.h>
+
+#ifdef __x86_64__
+#include "cpuid.h"
+#endif
 
 const char deflate_copyright[] =
    " deflate 1.2.8 Copyright 1995-2013 Jean-loup Gailly and Mark Adler ";
@@ -135,9 +141,42 @@ static const config configuration_table[10] = {
 /* rank Z_BLOCK between Z_NO_FLUSH and Z_PARTIAL_FLUSH */
 #define RANK(f) (((f) << 1) - ((f) > 4 ? 9 : 0))
 
-static uint32_t hash_func(deflate_state *s, void* str) {
+// UPDATE_HASH(s,h,c) (h = (((h)<<s->hash_shift) ^ (c)) & s->hash_mask)
+
+static uint32_t hash_func_sse42(deflate_state *s, void* str) __attribute__ ((__target__ ("sse4.2")));
+
+static uint32_t hash_func_sse42(deflate_state *s, void* str) {
     return _mm_crc32_u32(0, *(uint32_t*)str) & s->hash_mask;
 }
+
+static uint32_t hash_func_default(deflate_state *s, void* str) {
+	uint32_t a = *(uint32_t*)str;
+// Thomas Wang
+	a += ~(a<<15);
+	a ^=  (a>>10);
+	a +=  (a<<3);
+	a ^=  (a>>6);
+	a += ~(a<<11);
+	a ^=  (a>>16);
+// -
+  a &= s->hash_mask;
+	return a;
+}
+
+static uint32_t hash_func(deflate_state *s, void* str) __attribute__ ((ifunc ("resolve_hash_func")));
+
+void *resolve_hash_func(void)
+{
+  unsigned int eax, ebx, ecx, edx;
+  if (!__get_cpuid (1, &eax, &ebx, &ecx, &edx))
+    return hash_func_default;
+  /* We need SSE4.2 ISA support */
+  if (!(ecx & bit_SSE4_2))
+    return hash_func_default;
+	printf("SELECT hash_func_sse42\n");
+  return hash_func_sse42;
+}
+
 /* ===========================================================================
  * Insert string str in the dictionary and return the previous head
  * of the hash chain (the most recent string with same hash key).
@@ -1284,13 +1323,176 @@ static void check_match(s, start, match, length)
  *    performed for at least two bytes (required for the zip translate_eol
  *    option -- not supported here).
  */
-static void fill_window(s)
+static void fill_window_default(s)
+    deflate_state *s;
+{
+    register unsigned n, m;
+    register Pos *p;
+    unsigned more;    /* Amount of free space at the end of the window. */
+    uInt wsize = s->w_size;
+
+//		printf("SELECTED fill_window default\n");
+
+    Assert(s->lookahead < MIN_LOOKAHEAD, "already enough lookahead");
+
+    do {
+        more = (unsigned)(s->window_size -(ulg)s->lookahead -(ulg)s->strstart);
+
+        /* Deal with !@#$% 64K limit: */
+        if (sizeof(int) <= 2) {
+            if (more == 0 && s->strstart == 0 && s->lookahead == 0) {
+                more = wsize;
+
+            } else if (more == (unsigned)(-1)) {
+                /* Very unlikely, but possible on 16 bit machine if
+                 * strstart == 0 && lookahead == 1 (input done a byte at time)
+                 */
+                more--;
+            }
+        }
+
+        /* If the window is almost full and there is insufficient lookahead,
+         * move the upper half to the lower one to make room in the upper half.
+         */
+        if (s->strstart >= wsize+MAX_DIST(s)) {
+
+            zmemcpy(s->window, s->window+wsize, (unsigned)wsize);
+            s->match_start -= wsize;
+            s->strstart    -= wsize; /* we now have strstart >= MAX_DIST */
+            s->block_start -= (long) wsize;
+
+            /* Slide the hash table (could be avoided with 32 bit values
+               at the expense of memory usage). We slide even when level == 0
+               to keep the hash table consistent if we switch back to level > 0
+               later. (Using level 0 permanently is not an optimal usage of
+               zlib, so we don't care about this pathological case.)
+             */
+            n = s->hash_size;
+            p = &s->head[n];
+            do {
+                m = *--p;
+                *p = (Pos)(m >= wsize ? m-wsize : NIL);
+            } while (--n);
+
+            n = wsize;
+#ifndef FASTEST
+            p = &s->prev[n];
+            do {
+                m = *--p;
+                *p = (Pos)(m >= wsize ? m-wsize : NIL);
+                /* If n is not on any hash chain, prev[n] is garbage but
+                 * its value will never be used.
+                 */
+            } while (--n);
+#endif
+            more += wsize;
+        }
+        if (s->strm->avail_in == 0) break;
+
+        /* If there was no sliding:
+         *    strstart <= WSIZE+MAX_DIST-1 && lookahead <= MIN_LOOKAHEAD - 1 &&
+         *    more == window_size - lookahead - strstart
+         * => more >= window_size - (MIN_LOOKAHEAD-1 + WSIZE + MAX_DIST-1)
+         * => more >= window_size - 2*WSIZE + 2
+         * In the BIG_MEM or MMAP case (not yet supported),
+         *   window_size == input_size + MIN_LOOKAHEAD  &&
+         *   strstart + s->lookahead <= input_size => more >= MIN_LOOKAHEAD.
+         * Otherwise, window_size == 2*WSIZE so more >= 2.
+         * If there was sliding, more >= WSIZE. So in all cases, more >= 2.
+         */
+        Assert(more >= 2, "more < 2");
+
+        n = read_buf(s->strm, s->window + s->strstart + s->lookahead, more);
+        s->lookahead += n;
+
+        /* Initialize the hash value now that we have some input: */
+        if (s->lookahead + s->insert >= MIN_MATCH) {
+            uInt str = s->strstart - s->insert;
+            s->ins_h = s->window[str];
+//            UPDATE_HASH(s, s->ins_h, s->window[str + 1]);
+            s->ins_h = hash_func(s, &s->window[str + 1]);
+#if MIN_MATCH != 3
+            Call UPDATE_HASH() MIN_MATCH-3 more times
+#endif
+            while (s->insert) {
+//                UPDATE_HASH(s, s->ins_h, s->window[str + MIN_MATCH-1]);
+                s->ins_h = hash_func(s, &s->window[str + MIN_MATCH-1]);
+#ifndef FASTEST
+                s->prev[str & s->w_mask] = s->head[s->ins_h];
+#endif
+                s->head[s->ins_h] = (Pos)str;
+                str++;
+                s->insert--;
+                if (s->lookahead + s->insert < MIN_MATCH)
+                    break;
+            }
+        }
+        /* If the whole input has less than MIN_MATCH bytes, ins_h is garbage,
+         * but this is not important since only literal bytes will be emitted.
+         */
+
+    } while (s->lookahead < MIN_LOOKAHEAD && s->strm->avail_in != 0);
+
+    /* If the WIN_INIT bytes after the end of the current data have never been
+     * written, then zero those bytes in order to avoid memory check reports of
+     * the use of uninitialized (or uninitialised as Julian writes) bytes by
+     * the longest match routines.  Update the high water mark for the next
+     * time through here.  WIN_INIT is set to MAX_MATCH since the longest match
+     * routines allow scanning to strstart + MAX_MATCH, ignoring lookahead.
+     */
+    if (s->high_water < s->window_size) {
+        ulg curr = s->strstart + (ulg)(s->lookahead);
+        ulg init;
+
+        if (s->high_water < curr) {
+            /* Previous high water mark below current data -- zero WIN_INIT
+             * bytes or up to end of window, whichever is less.
+             */
+            init = s->window_size - curr;
+            if (init > WIN_INIT)
+                init = WIN_INIT;
+            zmemzero(s->window + curr, (unsigned)init);
+            s->high_water = curr + init;
+        }
+        else if (s->high_water < (ulg)curr + WIN_INIT) {
+            /* High water mark at or above current data, but below current data
+             * plus WIN_INIT -- zero out to current data plus WIN_INIT, or up
+             * to end of window, whichever is less.
+             */
+            init = (ulg)curr + WIN_INIT - s->high_water;
+            if (init > s->window_size - s->high_water)
+                init = s->window_size - s->high_water;
+            zmemzero(s->window + s->high_water, (unsigned)init);
+            s->high_water += init;
+        }
+    }
+
+    Assert((ulg)s->strstart <= s->window_size - MIN_LOOKAHEAD,
+           "not enough room for search");
+}
+
+/* ===========================================================================
+ * Fill the window when the lookahead becomes insufficient.
+ * Updates strstart and lookahead.
+ *
+ * IN assertion: lookahead < MIN_LOOKAHEAD
+ * OUT assertions: strstart <= window_size-MIN_LOOKAHEAD
+ *    At least one byte has been read, or avail_in == 0; reads are
+ *    performed for at least two bytes (required for the zip translate_eol
+ *    option -- not supported here).
+ */
+
+static void fill_window_sse42(deflate_state *) __attribute__ ((__target__ ("sse4.2")));
+
+static void fill_window_sse42(s)
     deflate_state *s;
 {
     register uint32_t  n, m;
     register Pos *p;
     uint32_t more;    /* Amount of free space at the end of the window. */
     uint32_t wsize = s->w_size;
+
+//		printf("SELECTED fill_window optimized\n");
 
     Assert(s->lookahead < MIN_LOOKAHEAD, "already enough lookahead");
 
@@ -1423,6 +1625,20 @@ static void fill_window(s)
 
     Assert((uint64_t)s->strstart <= s->window_size - MIN_LOOKAHEAD,
            "not enough room for search");
+}
+
+static void fill_window(deflate_state *) __attribute__ ((ifunc ("resolve_fill_window")));
+
+void *resolve_fill_window(void)
+{
+	unsigned int eax, ebx, ecx, edx;
+	if (!__get_cpuid (1, &eax, &ebx, &ecx, &edx))
+		return fill_window_default;
+	/* We need SSE4.2 ISA support */
+	if (!(ecx & bit_SSE4_2))
+		return fill_window_default;
+	printf("SELECT fill_window_sse42\n");
+	return fill_window_sse42;
 }
 
 /* ===========================================================================
