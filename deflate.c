@@ -49,8 +49,6 @@
 
 /* @(#) $Id$ */
 
-#include <stdio.h>
-
 #include "deflate.h"
 #include <immintrin.h>
 
@@ -141,8 +139,6 @@ static const config configuration_table[10] = {
 /* rank Z_BLOCK between Z_NO_FLUSH and Z_PARTIAL_FLUSH */
 #define RANK(f) (((f) << 1) - ((f) > 4 ? 9 : 0))
 
-// UPDATE_HASH(s,h,c) (h = (((h)<<s->hash_shift) ^ (c)) & s->hash_mask)
-
 static uint32_t hash_func_sse42(deflate_state *s, uint32_t h, void* str) __attribute__ ((__target__ ("sse4.2")));
 
 static uint32_t hash_func_sse42(deflate_state *s, uint32_t h, void* str) {
@@ -163,7 +159,6 @@ void *resolve_hash_func(void)
   /* We need SSE4.2 ISA support */
   if (!(ecx & bit_SSE4_2))
     return hash_func_default;
-	printf("SELECT hash_func_sse42\n");
   return hash_func_sse42;
 }
 
@@ -1321,8 +1316,6 @@ static void fill_window_default(s)
     unsigned more;    /* Amount of free space at the end of the window. */
     uInt wsize = s->w_size;
 
-//		printf("SELECTED fill_window default\n");
-
     Assert(s->lookahead < MIN_LOOKAHEAD, "already enough lookahead");
 
     do {
@@ -1482,8 +1475,6 @@ static void fill_window_sse42(s)
     uint32_t more;    /* Amount of free space at the end of the window. */
     uint32_t wsize = s->w_size;
 
-//		printf("SELECTED fill_window optimized\n");
-
     Assert(s->lookahead < MIN_LOOKAHEAD, "already enough lookahead");
 
     do {
@@ -1627,7 +1618,6 @@ void *resolve_fill_window(void)
 	/* We need SSE4.2 ISA support */
 	if (!(ecx & bit_SSE4_2))
 		return fill_window_default;
-	printf("SELECT fill_window_sse42\n");
 	return fill_window_sse42;
 }
 
