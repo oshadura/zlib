@@ -1358,16 +1358,6 @@ static void fill_window_default(s)
             } while (--n);
 
             n = wsize;
-#ifndef FASTEST
-            p = &s->prev[n];
-            do {
-                m = *--p;
-                *p = (Pos)(m >= wsize ? m-wsize : NIL);
-                /* If n is not on any hash chain, prev[n] is garbage but
-                 * its value will never be used.
-                 */
-            } while (--n);
-#endif
             more += wsize;
         }
         if (s->strm->avail_in == 0) break;
@@ -1392,17 +1382,9 @@ static void fill_window_default(s)
         if (s->lookahead + s->insert >= MIN_MATCH) {
             uInt str = s->strstart - s->insert;
             s->ins_h = s->window[str];
-//            UPDATE_HASH(s, s->ins_h, s->window[str + 1]);
             s->ins_h = hash_func(s, s->ins_h, &s->window[str + 1]);
-#if MIN_MATCH != 3
-            Call UPDATE_HASH() MIN_MATCH-3 more times
-#endif
             while (s->insert) {
-//                UPDATE_HASH(s, s->ins_h, s->window[str + MIN_MATCH-1]);
                 s->ins_h = hash_func(s, s->ins_h, &s->window[str + MIN_MATCH-1]);
-#ifndef FASTEST
-                s->prev[str & s->w_mask] = s->head[s->ins_h];
-#endif
                 s->head[s->ins_h] = (Pos)str;
                 str++;
                 s->insert--;
