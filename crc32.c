@@ -21,8 +21,6 @@
   DYNAMIC_CRC_TABLE and MAKECRCH can be #defined to write out crc32.h.
  */
 
-#include <stdio.h>
-
 #ifdef MAKECRCH
 #  include <stdio.h>
 #  ifndef DYNAMIC_CRC_TABLE
@@ -259,8 +257,6 @@ uLong crc32_pclmul(crc, buf, len)
 #define PCLMUL_ALIGN 16
 #define PCLMUL_ALIGN_MASK 15
 
-//		printf("SELECTED crc32 optimized\n");
-
     if (len < PCLMUL_MIN_LEN + PCLMUL_ALIGN  - 1)
       return crc32_generic(crc, buf, len);
 
@@ -296,7 +292,6 @@ uLong crc32_default(crc, buf, len)
     const Bytef *buf;
     uInt len;
 {
-//		printf("SELECTED crc32 generic\n");
     return crc32_generic(crc, buf, len);
 }
 
@@ -312,7 +307,6 @@ void *resolve_crc32(void)
 	/* We need SSE4.2 and PCLMUL ISA support */
 	if (!((ecx & bit_SSE4_2) && (ecx & bit_PCLMUL)))
 		return crc32_default;
-	printf("SELECT crc32_pclmul\n");
 	return crc32_pclmul;
 }
 
