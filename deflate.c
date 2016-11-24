@@ -49,8 +49,6 @@
 
 /* @(#) $Id$ */
 
-#include <stdio.h>
-
 #include "deflate.h"
 
 #ifdef __x86_64__
@@ -172,7 +170,6 @@ void *resolve_hash_func(void)
   /* We need SSE4.2 ISA support */
   if (!(ecx & bit_SSE4_2))
     return hash_func_default;
-	printf("SELECT hash_func_sse42\n");
   return hash_func_sse42;
 }
 
@@ -1337,8 +1334,6 @@ static void fill_window_default(s)
     unsigned more;    /* Amount of free space at the end of the window. */
     uInt wsize = s->w_size;
 
-//		printf("SELECTED fill_window default\n");
-
     Assert(s->lookahead < MIN_LOOKAHEAD, "already enough lookahead");
 
     do {
@@ -1497,8 +1492,6 @@ static void fill_window_sse42(s)
     register Pos *p;
     uint32_t more;    /* Amount of free space at the end of the window. */
     uint32_t wsize = s->w_size;
-
-//		printf("SELECTED fill_window optimized\n");
 
     Assert(s->lookahead < MIN_LOOKAHEAD, "already enough lookahead");
 
@@ -1661,7 +1654,6 @@ void *resolve_fill_window(void)
 	/* We need SSE4.2 ISA support */
 	if (!(ecx & bit_SSE4_2))
 		return fill_window_default;
-	printf("SELECT fill_window_sse42\n");
 	return fill_window_sse42;
 }
 

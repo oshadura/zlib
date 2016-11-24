@@ -11,8 +11,6 @@
 
 #include <immintrin.h>
 
-#include <stdio.h>
-
 #ifdef __x86_64__
 #include "cpuid.h"
 #endif
@@ -81,7 +79,6 @@ static uLong adler32_combine_ OF((uLong adler1, uLong adler2, z_off64_t len2));
 uLong ZEXPORT adler32_default(uLong adler, const Bytef *buf, uInt len)
 {
 	
-		printf("CALLING adler32_default\n");
     unsigned long sum2;
     unsigned n;
 
@@ -154,7 +151,6 @@ uLong ZEXPORT adler32_default(uLong adler, const Bytef *buf, uInt len)
  __attribute__ ((target ("sse4.2")))
 uLong ZEXPORT adler32_sse42(uLong adler, const Bytef *buf, uInt len)
 {
-		printf("CALLING adler32_sse42\n");
     unsigned long sum2;
 
     /* split Adler-32 into component sums */
@@ -260,7 +256,6 @@ uLong ZEXPORT adler32_sse42(uLong adler, const Bytef *buf, uInt len)
 __attribute__ ((target ("avx2")))
 uLong ZEXPORT adler32_avx2(uLong adler, const Bytef *buf, uInt len)
 {
-		printf("CALLING adler32_avx2\n");
     unsigned long sum2;
 
     /* split Adler-32 into component sums */
@@ -376,17 +371,14 @@ void *resolve_adler32(void)
 #endif /* defined(bit_AVX2) */
 
 	/* Pick AVX2 version */
-	if (has_avx2) {
-		printf("SELECT adler32_avx2\n");
+	if (has_avx2)
 		return adler32_avx2;
-	}
+
   /* Pick SSE4.2 version */
-  if (has_sse42) {
-		printf("SELECT adler32_sse42\n");
+  if (has_sse42)
     return adler32_sse42;
-	}
+
 	/* Fallback to default implementation */
-	printf("SELECT adler32_default\n");
   return adler32_default;
 }
 
