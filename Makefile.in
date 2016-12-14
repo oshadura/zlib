@@ -124,11 +124,11 @@ cover: infcover
 
 OBJA += crc32-pclmul_asm.o
 crc32-pclmul_asm.o : contrib/amd64/crc32-pclmul_asm.S
-	$(CC) -msse4.2 -mpclmul $(CFLAGS) -p -c $< -o $@
+	$(CC) $(CFLAGS) -msse4.2 -mpclmul -p -c $< -o $@
 
 PIC_OBJA += crc32-pclmul_asm.lo
 crc32-pclmul_asm.lo : contrib/amd64/crc32-pclmul_asm.S
-	$(CC) -msse4.2 -mpclmul $(SFLAGS) -c $< -o $@
+	$(CC) $(SFLAGS) -msse4.2 -mpclmul -c $< -o $@
 
 libz.a: $(OBJS)
 	$(AR) $(ARFLAGS) $@ $(OBJS)
